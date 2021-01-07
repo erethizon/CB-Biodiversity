@@ -1,0 +1,58 @@
+---
+title: "Biodiversity"
+author: "Erika"
+date: "1/14/2019"
+output: html_document
+---
+
+##Introduction
+
+In conservation biology during the first lab, we calculate simpson's and shannon-weiner indices for a series of simulations and then as homework with some real data.
+
+I'd like to step it up a bit and use R for some of the diversity calculations.  Doing so will require the vegan package.
+
+###Step 1.  Set up your workspace
+```{r}
+rm(list = ls())
+library(dplyr)
+library(vegan)
+library(ggplot2)
+```
+
+###Step 2. Pull in some data
+
+```{r}
+library(readxl)
+DF <- read_excel("tree_data.xlsx")
+```
+### Step 3. Check data for issues
+
+```{r}
+DF$Species<-as.factor(DF$Species)
+levels(DF$Species)
+```
+Looks good - each species just has one "name". No typos.
+
+We don't really need the DBH data for this one.
+
+###Step 4. Determine # of each species
+```{r}
+Species <- DF %>% group_by(Species) %>% summarize (
+	NumSpec=length(Species)
+)
+```
+###Step 5. Transpose data to vegan format
+Need to have columns represent species and row represent # per species
+
+```{r}
+DF1<-t(Species)
+DF1<-as.data.frame(DF1)
+NumSpec<-DF1[2,]
+NumSpec<-as.numeric(NumSpec)
+```
+###Step 6. Calculate diversity indices
+```{r}
+diversity(NumSpec, index = "simpson")
+```
+
+

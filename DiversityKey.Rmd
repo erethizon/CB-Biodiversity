@@ -1,0 +1,149 @@
+---
+title: "Biodiversity Key - R version"
+output: html_notebook
+---
+
+##Assignment
+Use real biological data from three forests in northern New York to compute diversity indices and answer several questions related to the use of diversity indices.  Use the spreadsheet called "tree_data.xlsx" provided on Sakai to do your work.  The spreadsheet has 4 tabs: the first 3 are each from a separate forest (Donnerville, South Hammond, Degrasse) and the fourth is called "forest comparison".
+
+###Question 1.
+Use the information on the first 3 tabs to compute
+
+* a species richness measure and then
+
+* either a Simpson's index or a Shannon index for each data set (which ever you think most appropriate). Use this information to construct a table like the one below.  Be sure to give your table a meaningful heading.  Show your work.
+
+Table 1. Species richness and diversity index for 3 forests in northern New York.
+
+|     Forest    |    SR   | Index of Choice |
+|:-------------:|:-------:|:---------------:|
+| Donnerville   |         |                 |
+| South Hammond |         |                 |
+| Degrasse      |         |                 |
+
+
+####Step 1. Prep the workspace and get data
+#####Prep the workspace
+```{r}
+library(ggplot2)
+library(dplyr)
+library(vegan)
+library(tidyr)
+```
+
+#####Load data
+Start by creating a unique .csv from each of the 3 forest tabs on the excel sheet and then import them into R.
+
+Read in files
+```{r}
+library(readr)
+Donner <- read_csv("Donnerville.csv")
+SH <- read_csv("SHammond.csv")
+DG <- read_csv("Degrasse.csv")
+```
+####Step 2. Determine SR for each site.
+Now we need to summarize each DF by Species to determine SR for each site.  First need to check levels of Species for typos.
+
+Typo check:
+```{r}
+DG$Species<-as.factor(DG$Species)
+Donner$Species<-as.factor(Donner$Species)
+SH$Species<-as.factor(SH$Species)
+
+levels(DG$Species)
+levels(Donner$Species)
+levels(SH$Species)
+```
+Species all appear to be correctly entered-no typos.
+
+Now summarize each DF by species.
+```{R}
+DG_Spec<-DG %>% group_by(Species) %>% summarize(
+	NumSpec = length(Species)
+)
+
+Donner_Spec<-Donner %>% group_by(Species) %>% summarize (
+	NumSpec = length (Species)
+)
+
+SH_Spec<-SH %>% group_by(Species) %>% summarize(
+	NumSpec = length(Species)
+)
+```
+Now determine SR for each site:
+```{r}
+#create table to hold results
+SpeciesRichness<-c(0,0,0)
+Forest<-c("Donerville", "South Hammond", "Degrasse")
+SR_Donner<-Donner_Spec %>% summarize(
+	SR = length(NumSpec)
+)
+SpeciesRichness[1]<-SR_Donner$SR
+
+SR_SH<-SH_Spec %>% summarize(
+	SR = length(NumSpec)
+)
+SpeciesRichness[2]<-SR_SH$SR
+
+SR_DG<-DG_Spec %>% summarize(
+	SR =length(NumSpec)
+)
+SpeciesRichness[3]<-SR_DG$SR
+
+#now put in data frame
+
+Results<-as.data.frame(cbind(Forest, SpeciesRichness))
+Results
+```
+
+###Step 3. Determine diversity for each site.
+Now we will use the vegan package to determine the Simpson's and Shannon index for each site.  We may get different values than with Excel, since the formulae used by vegan may be different, somewhat, from the formulae we looked at in class.
+
+####Begin by reshaping the data from long into wide format 
+To use vegan, we need to create a matrix with species names along the top and a row for each site, with no column indicating the site names. 
+
+To do so, I'm going to begin by creating a new df that has information from each of the 3 sites built from the DG_spec, Donner_Spec and SH_Spec data frames.
+```{r}
+DG_Spec$Site<-"Degrasse"
+Donner_Spec$Site<-"Donnverville"
+SH_Spec$Site<-"SHammond"
+```
+Now let's stick these 3 DFs together into on using rbind
+
+```{r}
+Allsites<-DG_Spec
+Allsites<-rbind(Allsites, Donner_Spec, SH_Spec)
+```
+Great!  Now I just need to transpose the data; lets begin by summarizing differently
+```{r}
+Species<-Allsites %>% group_by(Species, Site) %>% summarize (
+	num = sum(NumSpec)
+)
+```
+Now switch from long to wide using tidyr
+```{r}
+ForVeg<-spread(Species, key = Species, value = num)
+
+
+```
+
+Great!  Now convert the NA's to zeros
+```{r}
+ForVeg[is.na(ForVeg)]<- 0
+```
+And now get rid of the first column
+```{r}
+ForVeg1<-ForVeg[,-1]
+```
+####Now we're ready for vegan
+Diversity indices
+```{r}
+Simpson<-diversity(ForVeg1, index = "simpson")
+Shannon<-diversity(ForVeg1, index = "shannon")
+```
+Now make it pretty
+```{r}
+Site<-c("Degrasse", "Donnerville", "South Hammond")
+Results<-cbind(Site, Simpson, Shannon)
+```
+

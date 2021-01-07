@@ -1,0 +1,222 @@
+---
+title: "Biodiversity simulation"
+author: "Erika"
+date: "12/2/2020"
+output: html_document
+---
+
+## Introduction
+This document includes the code to run the diversity simulations I use in the first conservation biology lab.
+
+## Set things up
+```{r}
+rm(list = ls())
+library(dplyr)
+library(ggplot2)
+library(vegan)
+library(boot)
+```
+
+## Part 1. Set up simulation data
+
+### Assumptions		
+Our aim is to compare estimates of biodiversity from several indices with actual levels of diversity in differently structured commmunities in order to learn more about how the indices themselves work. To do so, we need to create some starting communities.
+
+Each of our communities will consist of 10,000 individuals
+
+Let's create some species that we can use to build communities
+
+```{r}
+SpeciesCode<-paste("Species_", 1:100, sep = "")
+SimpleSpecies<-paste("Species_", 1:3, sep = "")
+```
+
+### Build Communities
+####Simple communities
+S_Community_1 will have an even distrubiton of 3 species (10 individuals of each) = 30 individuals
+
+S_Community_2 will have a very uneven distribution of 3 species: 26 individuals of one species and 2 each of 2 other species).
+
+S_Community_3 will have a random distrubiton of 3 species, a total of 30 individuals.
+
+```{r}
+S_Com_1<-rep(SimpleSpecies, each = 10)
+S_Com_2<-c((rep(SimpleSpecies[1], each = 26)), SimpleSpecies[2], SimpleSpecies[2], SimpleSpecies[3], SimpleSpecies[3])
+S_Com_3<-sample(SimpleSpecies, size = 30, replace = T)
+```
+
+####Complex communities
+Community 1 is going to be one with an even distribution of 100 different species.  Then we will randomly select from that community.
+
+So let's take our Species varaible (100 codes representing 100 different species) and make a vector that repeats each species code 100 times.
+
+```{r}
+Community_1<-rep(SpeciesCode, each = 100)
+```
+The second community will be dominated by one species; there will be 9900 individuals of one species and 10 individuals each of 99 species.
+```{r}
+Spec1<-rep(SpeciesCode[1], each = 9010)
+OtherSpec<-rep(SpeciesCode[2:100], each = 10)
+Community_2<-vector(mode = "character", length = 10000)
+Community_2[1:9010]<-Spec1
+Community_2[9011:10000]<-OtherSpec
+```
+The third community will be one that has 10,000 individuals selected at random from among the 100 species.
+
+```{r}
+Community_3<-sample(SpeciesCode, size = 10000, replace = T)
+```
+
+Now put them together into a data frame
+```{r}
+Communities<-data.frame(cbind(Community_1, Community_2, Community_3))
+```
+Convert species to factor and get histogram by species for each Community
+
+```{r}
+Communities$Community_1<-as.factor(Communities$Community_1)
+Communities$Community_2<-as.factor(Communities$Community_2)
+Communities$Community_3<-as.factor(Communities$Community_3)
+
+ggplot(Communities, aes(Community_1))+
+	geom_histogram(stat = "count")
+
+ggplot(Communities, aes(Community_2))+
+	geom_histogram(stat = "count")
+
+ggplot(Communities, aes(Community_3))+
+	geom_histogram(stat="count")
+```
+
+
+Can also use the table function just to make sure I did things right:
+```{r}
+table(Communities$Community_1)
+table(Communities$Community_2)
+table(Communities$Community_3)
+```
+Looks good!
+
+## Part 2. Simulations!
+### Simulation 1. Even community (Com1)
+Now let's sample from our even community
+
+```{r}
+Take<-sample(Communities$Community_1, size=100, replace = F)
+myTake<-table(Take)
+Richness<-length(unique(Take))
+Simpson<-diversity(myTake, index = "simpson")
+Shannon<-diversity(myTake, index = "shannon")
+DivScores<-c(Richness, Simpson, Shannon)
+
+```
+Now let's write a function that does all of that and gives the output
+
+```{r}
+Diversity_sim<-function(vector_of_species, num_to_sample){
+	#return three diversity indices in a vector
+	Take<-sample(vector_of_species, size = num_to_sample, replace = F)
+	myTake<-table(Take)
+	Richness<-length(unique(Take))
+	Simpson<-diversity(myTake, index = "simpson")
+	Shannon<-diversity(myTake, index = "shannon")
+	DivScores<-c(Richness, Simpson, Shannon)
+	return(DivScores)
+}
+```
+Now test
+```{r}
+Diversity_sim(Communities$Community_1, 50)
+```
+
+Now try to run it multiple times using the boot package
+
+We need to modify the function so that it is not doing the sampling so that boot can do the sampling for me.
+
+```{r}
+DivCalc<-function(vector_of_species,sample_size,indices){
+	Take<-sample(vector_of_species, size=sample_size, replace = F)
+	myTake<-table(Take[indices])
+	Richness<-length(unique(myTake))
+	Simpson<-diversity(myTake, index = "simpson")
+	Shannon<-diversity(myTake, index = "shannon")
+	DivScores<-c(Richness, Simpson, Shannon)	
+}
+
+set.seed(12345)
+myBootstrap <- boot(Communities$Community_1, DivCalc(vector_of_species=Communities$Community_1, sample_size = 5, indices = 1:5), R=10, stype = "i")
+```
+
+```{r}
+mySim<-replicate(10, Diversity_sim(Communities$Community_1, 50))
+```
+Now let's transpose the matrix so that each row is a trial and each column is one of the indices
+```{r}
+mySim<-t(mySim) #t function transposes rows and columns in a matrix.
+```
+
+And now save as a data frame then assign column names
+```{r}
+mySim<-data.frame(mySim)
+colnames(mySim)<-c("R", "Simpson", "Shannon")
+mySim$Trial<-seq(1,length(mySim$R))
+mySim<-mySim %>% select(Trial, everything()) #move trial to first column position
+```
+Plot the results
+```{r}
+ggplot(mySim, aes(Trial, R))+
+	geom_point()+
+	scale_x_continuous(breaks=c(1:10))
+```
+
+Now calculate cumulative mean and sd
+```{r}
+library(TTR)
+mySim<- mySim %>% mutate(
+	MeanR = cummean(R),
+	MeanSimpson = cummean(Simpson),
+	MeanShannon = cummean(Shannon),
+	sdR = runSD(R, n = 1, cumulative = T),
+	sdSimpson = runSD(Simpson, n = 1, cumulative = T), 
+	sdShannon =runSD(Shannon, n=1, cumulative = T),
+	semR = sdR/sqrt(length(R)),
+	semSimpson = sdSimpson/sqrt(length(Simpson)),
+	semShannon = sdShannon/sqrt(length(Shannon)))
+```
+Now try to use pivot_longer from tidyr to push from wide to long. This is complicated to do easily, so check out [this page](https://tidyr.tidyverse.org/articles/pivot.html#longer-2) 
+
+Start by renaming the columns to make it easier (we'll use dplyr):
+```{r}
+mySim <-mySim %>% rename(
+	index_R = R,
+	index_Simpson = Simpson,
+	index_Shannon = Shannon,
+	mean_R = MeanR,
+	mean_Simpson = MeanSimpson,
+	mean_Shannon = MeanShannon,
+	sd_R = sdR,
+	sd_Simpson = sdSimpson,
+	sd_Shannon = sdShannon,
+	sem_R = semR,
+	sem_Simpson = semSimpson,
+	sem_Shannon = semShannon
+)
+```
+Now use pivot_longer:
+```{r}
+mySim<-mySim %>% pivot_longer(
+	!Trial,
+	names_to = c("index", "estimate"),
+	names_sep = "_",
+	values_to = "value"
+	
+)
+```
+
+Now more complex plot:
+```{r}
+ggplot(test, aes(Trial,value, color =  ))
+```
+
+
+
