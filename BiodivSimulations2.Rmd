@@ -1,0 +1,215 @@
+---
+title: "Biodiversity simulation"
+author: "Erika"
+date: "12/2/2020"
+output: html_document
+---
+
+## Introduction
+This document includes the code to run the diversity simulations I use in the first conservation biology lab.
+
+## Set things up
+```{r}
+rm(list = ls())
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(vegan)
+library(boot)
+```
+
+## Part 1. Set up simulation data
+
+### Assumptions		
+Our aim is to compare estimates of biodiversity from several indices with actual levels of diversity in differently structured commmunities in order to learn more about how the indices themselves work. To do so, we need to create some starting communities.
+
+Each of our communities will consist of 10,000 individuals
+
+Let's create some species that we can use to build communities
+
+```{r}
+SpeciesCode<-paste("Species_", 1:100, sep = "")
+```
+
+### Build Communities
+Community 1 is going to be one with an even distribution of 100 different species.  Then we will randomly select from that community.
+
+So let's take our Species varaible (100 codes representing 100 different species) and make a vector that repeats each species code 100 times.
+
+```{r}
+Community_1<-rep(SpeciesCode, each = 100)
+```
+The second community will be dominated by one species; there will be 9900 individuals of one species and 10 individuals each of 99 species.
+```{r}
+Spec1<-rep(SpeciesCode[1], each = 9010)
+OtherSpec<-rep(SpeciesCode[2:100], each = 10)
+Community_2<-vector(mode = "character", length = 10000)
+Community_2[1:9010]<-Spec1
+Community_2[9011:10000]<-OtherSpec
+```
+The third community will be one that has 10,000 individuals selected at random from among the 100 species.
+
+```{r}
+Community_3<-sample(SpeciesCode, size = 10000, replace = T)
+```
+
+Now put them together into a data frame
+```{r}
+Communities<-data.frame(cbind(Community_1, Community_2, Community_3))
+```
+Write out the data frame so that I don't need to have the shiny app create the communities each time but can just give it a dataset
+
+```{r}
+write.csv(Communities, file = "Communities.csv")
+```
+
+Convert species to factor and get histogram by species for each Community
+
+```{r}
+Communities$Community_1<-as.factor(Communities$Community_1)
+Communities$Community_2<-as.factor(Communities$Community_2)
+Communities$Community_3<-as.factor(Communities$Community_3)
+
+# ggplot(Communities, aes(Community_1))+
+# 	geom_histogram(stat = "count")
+# 
+# ggplot(Communities, aes(Community_2))+
+# 	geom_histogram(stat = "count")
+# 
+# ggplot(Communities, aes(Community_3))+
+# 	geom_histogram(stat="count")
+```
+
+
+Can also use the table function just to make sure I did things right:
+```{r}
+# table(Communities$Community_1)
+# table(Communities$Community_2)
+# table(Communities$Community_3)
+```
+Looks good!
+
+## Part 2. Simulations!
+
+###Simulation 1. Species Richness Index
+Let's calculate species richness from each community a bunch of times and compare average to actual.
+
+```{r}
+# ASRc1 <- length(levels(Communities$Community_1)) #actual species richness community 1
+# 
+# ASRc2<-length(levels(Communities$Community_2)) #actual SR com 2
+# 
+# ASRc3<- length(levels(Communities$Community_3)) #actual SR com 3
+```
+Confirms that the actual species richness in each community is 100 species.
+
+How well does the SR measure capture actual SR depends on how many samples are taken.
+
+Generate 10 randomly selected sample sizes
+
+```{r}
+SS<-c(10, 100, 1000, 2000, 4000, 6000, 8000)
+SSrand<-sample(1:10000, 10) #randomly sample ten numbers between 1 and 10,000
+summary(SS)
+```
+Now, for each sample size, randomly select that number of individuals from the community and calculate SR. Do this a lot of times to generate mean and range.
+
+Use the same sample sizes for each index.
+```{r}
+# Richness1<-vector(mode = "integer", length = length(SS))
+# Richness2<-vector(mode = "integer", length = length(SS))
+# Richness3<-vector(mode = "integer", length = length(SS))
+# 
+# for (i in 1:length(SS)){
+# 	Take1<-sample(Communities$Community_1, size=SS[i], replace = F)
+# 	Take2<-sample(Communities$Community_2, size = SS[i], replace = F)
+# 	Take3<-sample(Communities$Community_3, size = SS[i], replace = F)
+# 
+# Richness1[i]<-length(unique(Take1))
+# Richness2[i]<-length(unique(Take2))
+# Richness3[i]<-length(unique(Take3))
+# }
+```
+Ok, that works. Now set up a dataframe for each community to store results of a whole bunch of iterations.
+
+```{r}
+NumIterations<-10
+RowNames<-paste("Iteration_", 1:NumIterations, sep = "")
+ColNames<-paste("R_",SS, sep = "")
+
+# for (i in 1:3){
+# 	assign(paste0("Rvals_Comm", i), data.frame(matrix(nrow = NumIterations, ncol = length(SS)), row.names = RowNames))
+# 	
+# }
+```
+Try for one dataframe in long format to take all results.
+```{r}
+SpecRich<-data.frame(matrix(nrow = (3*NumIterations*length(SS)),ncol = 4))
+names(SpecRich)<-c("Community", "Iteration", "N", "SR")
+SpecRich$Community<-rep(1:3, each = 70)
+SpecRich$Iteration<-rep(rep(1:10, each = 7), times = 3)
+SpecRich$N<-rep(SS, times = 30)
+```
+
+Now create the loop to do the sampling
+
+Need an outer loop that steps through the iterations and an inner loop that steps through 1 iteration for each sample size
+
+```{r}
+#outer loop
+# for(i in 1:NumIterations){
+# 	for (s in 1:length(SS)){
+# 	Take1<-sample(Communities$Community_1, size=SS[s], replace = F)
+# 	Take2<-sample(Communities$Community_2, size = SS[s], replace = F)
+# 	Take3<-sample(Communities$Community_3, size = SS[s], replace = F)
+# 
+# Richness1[s]<-length(unique(Take1))
+# Richness2[s]<-length(unique(Take2))
+# Richness3[s]<-length(unique(Take3))
+# 	}
+# 	Rvals_Comm1[i,]<-Richness1
+# 	Rvals_Comm2[i,]<-Richness2
+# 	Rvals_Comm3[i,]<-Richness3
+# }
+# names(Rvals_Comm1)<-ColNames
+# names(Rvals_Comm2)<-ColNames
+# names(Rvals_Comm3)<-ColNames
+```
+Reshape data frames using tidyr
+```{r}
+# #add column for iteration number to make tidying easier
+# Rvals_Comm1$Iteration<-1:NumIterations
+# 
+# Com1_SR<-Rvals_Comm1 %>% pivot_longer(!Iteration,names_to = "SS", values_to = "SR")
+```
+Or reconstruct it to avoid having to reshape
+```{r}
+#outer loop
+NumCommunities<-3
+for(c in 1:NumCommunities){
+	browser()
+	for(i in 1:NumIterations){
+		browser()
+		for (s in 1:length(SS)){
+			browser()
+			Take<-sample(Communities[,c], size=SS[s],
+					    replace = F)
+			
+			
+			SpecRich$SR<-length(unique(Take))
+		}
+	}
+}
+```
+
+Now plot
+```{r}
+RichnessPlot<-ggplot(Com1_SR, aes(SS, SR))+
+	geom_point()+
+	geom_jitter(width = .1)
+
+RichnessPlot
+```
+
+
+
