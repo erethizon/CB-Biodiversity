@@ -13,9 +13,50 @@ library(shiny)
 ui <- fluidPage(
 
     # Application title
-    titlePanel("Old Faithful Geyser Data"),
+    titlePanel("Biodiversity Index Explorer"),
+######################################
+tabsetPanel(
+    #Species Richness
+    tabPanel("Species Richness", fluid = TRUE,
+        sidebarLayout(
+            sidebarPanel(
+                selectInput(
+                    "NumberOfSpecies",
+                    h3("How many species in your community?"),
+                    choices = c(10,20,30,40,50,60, 70, 80, 90, 100),
+                    selected = 100),
+                 ),
+            mainPanel(
+                h5("Examine the output in the figure below"),
+                plotOutput(outputId = "SpeciesRichness"))
+                )
+             )
+        ),
+    #Simpson's Index
+    tabPanel("Simpson's Index", fluid = TRUE,
+        sidebarLayout(
+            sidebarPanel(
+                selectInput("NumberOfSpecies",
+                        h3("How many species in your community?"),
+                        choices = c(10,20,30,40,50,60,70,80,90,100),
+                        selected = 100),
+                selectInput("Number of Trials",
+                            h3("How many iterations would you like?"),
+                            choices = c(10, 100, 1000),
+                            selected = 100),
+                 ),
+            mainPanel(
+            h5("This graph displays"),
+            plotOutput(outputId = "foresthist"))
+             )
+    ),
 
-    # Sidebar with a slider input for number of bins 
+    )
+)
+
+
+    ###################################################
+    # Sidebar with a slider input for number of bins
     sidebarLayout(
         sidebarPanel(
             sliderInput("bins",
@@ -45,5 +86,5 @@ server <- function(input, output) {
     })
 }
 
-# Run the application 
+# Run the application
 shinyApp(ui = ui, server = server)
